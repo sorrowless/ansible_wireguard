@@ -1,0 +1,6 @@
+---
+- name: Install and configure wireguard
+  hosts: localhost
+  remote_user: root
+  roles:
+    - { role: wireguard, tags: [ 'wireguard', 'vpn' ] }

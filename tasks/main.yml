@@ -1,0 +1,61 @@
+---
+- name: Create configuration directory
+  file:
+    dest: "{{ wireguard_directory }}"
+    state: directory
+    # TODO(sbog): change it from 0777 to according 0755 and fix user/group ownership
+    mode: 0700
+    owner: root
+    group: root
+
+- name: Start docker wireguard container
+  community.docker.docker_compose:
+    project_name: wireguard
+    definition:
+      version: '2'
+      services:
+        wireguard:
+          image: "linuxserver/wireguard"
+          container_name: "wireguard"
+          ports:
+            - "{{ wireguard_server_port }}:{{ wireguard_server_port }}/udp"
+          volumes:
+            - "/lib/modules:/lib/modules"
+            - "{{ wireguard_directory }}:/config"
+          hostname: "wireguard"
+          restart: always
+          labels: "{{ wireguard_docker_labels }}"
+          cap_add:
+            - NET_ADMIN
+            - SYS_MODULE
+          environment:
+            - PUID=1000
+            - PGID=1000
+            - TZ=Europe/Moscow
+            - "SERVERURL={{ wireguard_server_url }}"
+            - "SERVERPORT={{ wireguard_server_port }}"
+            - "PEERS={{ wireguard_peers_names | join(',') }}"
+            - "PEERDNS={{ wireguard_peers_dns | join(',') }}"
+            - "INTERNAL_SUBNET={{ wireguard_internal_subnet }}"
+            - "ALLOWEDIPS={{ wireguard_allowed_ips }}"
+            - "LOG_CONFS={{ wireguard_log_confs }}"
+      networks:
+        default:
+          external:
+            name: "{{ wireguard_docker_network_name }}"
+
+- name: Fetch configurations to localhost
+  fetch:
+    src: "{{ wireguard_directory }}/peer_{{ item }}/peer_{{ item }}.conf"
+    dest: "/tmp/wireguard_vpn/peer_{{ item }}.conf"
+    flat: yes
+  with_items: "{{ wireguard_peers_names }}"
+  tags: ['fetch_configs']
+
+- name: Fetch qr codes to localhost
+  fetch:
+    src: "{{ wireguard_directory }}/peer_{{ item }}/peer_{{ item }}.png"
+    dest: "/tmp/wireguard_vpn/peer_{{ item }}.png"
+    flat: yes
+  with_items: "{{ wireguard_peers_names }}"
+  tags: ['fetch_configs']

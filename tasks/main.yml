@@ -8,6 +8,23 @@
     owner: root
     group: root
 
+- name: Find existing peers
+  find:
+    paths: "{{ wireguard_directory }}"
+    patterns: "peer_*"
+    file_type: "directory"
+  register: dirs
+
+- name: Create a list of existing peer directories
+  set_fact:
+    list_of_existing_peer_dirs: "{{ list_of_existing_peer_dirs|default([]) }} + [ '{{ item.path }}' ]"
+  with_items: "{{ dirs.files }}"
+
+- name: Create a list of peer directoriers
+  set_fact:
+    list_of_peer_dirs: "{{ list_of_peer_dirs|default([]) }} + [ '{{ wireguard_directory }}/peer_{{ item }}' ]"
+  with_items: "{{ wireguard_peers_names }}"
+
 - name: Start docker wireguard container
   community.docker.docker_compose:
     project_name: wireguard
@@ -43,6 +60,12 @@
         default:
           external:
             name: "{{ wireguard_docker_network_name }}"
+
+- name: Remove old peers' configs
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items: "{{ list_of_existing_peer_dirs | default([]) | difference(list_of_peer_dirs) }}"
 
 - name: Fetch configurations to localhost
   fetch:

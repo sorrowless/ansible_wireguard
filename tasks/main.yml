@@ -1,4 +1,13 @@
 ---
+- name: Create a list of peer names
+  set_fact:
+    wireguard_peers_names: "{{ wireguard_peers | map(attribute='name') | list }}"
+    list_of_existing_peer_dirs: []
+    list_of_peer_dirs: []
+    list_of_new_peer_dirs: []
+    list_of_new_peer_names: []
+    wireguard_new_peers: []
+
 - name: Create configuration directory
   file:
     dest: "{{ wireguard_directory }}"
@@ -17,13 +26,28 @@
 
 - name: Create a list of existing peer directories
   set_fact:
-    list_of_existing_peer_dirs: "{{ list_of_existing_peer_dirs|default([]) }} + [ '{{ item.path }}' ]"
+    list_of_existing_peer_dirs: "{{ list_of_existing_peer_dirs }} + [ '{{ item.path }}' ]"
   with_items: "{{ dirs.files }}"
 
 - name: Create a list of peer directoriers
   set_fact:
-    list_of_peer_dirs: "{{ list_of_peer_dirs|default([]) }} + [ '{{ wireguard_directory }}/peer_{{ item }}' ]"
+    list_of_peer_dirs: "{{ list_of_peer_dirs }} + [ '{{ wireguard_directory }}/peer_{{ item }}' ]"
   with_items: "{{ wireguard_peers_names }}"
+
+- name: Create a list of new peer directories
+  set_fact:
+    list_of_new_peer_dirs: "{{ list_of_peer_dirs | difference(list_of_existing_peer_dirs) }}"
+
+- name: Create a list of new peer names
+  set_fact:
+    list_of_new_peer_names: "{{ list_of_new_peer_names }} + [ '{{ item | split('/') | last | replace('peer_','') }}' ]"
+  with_items: "{{ list_of_new_peer_dirs }}"
+  
+- name: Create a list of new peers
+  set_fact:
+    wireguard_new_peers: "{{ wireguard_new_peers }} + [ {{ item }} ]"
+  when: item.name in list_of_new_peer_names
+  loop: "{{ wireguard_peers }}"
 
 - name: Start docker wireguard container
   community.docker.docker_compose:
@@ -67,6 +91,12 @@
     state: absent
   with_items: "{{ list_of_existing_peer_dirs | default([]) | difference(list_of_peer_dirs) }}"
 
+- name: Wait until the client confs is present before continuing
+  wait_for:
+    path: "{{ wireguard_directory }}/peer_{{ item }}/peer_{{ item }}.conf"
+  with_items: "{{ wireguard_peers_names }}"
+  tags: ['fetch_configs']
+
 - name: Fetch configurations to localhost
   fetch:
     src: "{{ wireguard_directory }}/peer_{{ item }}/peer_{{ item }}.conf"
@@ -81,4 +111,22 @@
     dest: "/tmp/wireguard_vpn/peer_{{ item }}.png"
     flat: yes
   with_items: "{{ wireguard_peers_names }}"
+  tags: ['fetch_configs']
+
+- name: Send config to users email
+  mail:
+    host: "{{ wireguard_mail.host }}"
+    port: "{{ wireguard_mail.port }}"
+    username: "{{ wireguard_mail.user }}"
+    sender: "{{ wireguard_mail.user }}"
+    password: "{{ wireguard_mail.secret }}"
+    to: "{{ item.email }}"
+    subject: "{{ wireguard_mail.subject }}"
+    body: "{{ wireguard_mail.body }}"
+    attach: 
+      - "{{ wireguard_directory }}/peer_{{ item.name }}/peer_{{ item.name }}.conf"
+      - "{{ wireguard_directory }}/peer_{{ item.name }}/peer_{{ item.name }}.png"
+  when: item.email is defined and wireguard_mail.host is defined 
+  with_items: "{{ wireguard_new_peers }}"
+  failed_when: False
   tags: ['fetch_configs']

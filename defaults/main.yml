@@ -9,7 +9,7 @@ wireguard_server_port: 51820
 # wireguard_peers:
 #   - name: peer
 #     email: mail
-wireguard_peers: {}
+wireguard_peers: []
 # DNS servers for peers
 wireguard_peers_dns: [8.8.8.8, 1.1.1.1]
 # VPN network

@@ -5,8 +5,11 @@ wireguard_directory: /etc/wireguard
 wireguard_server_url: vpn.example.com
 # Port to listen
 wireguard_server_port: 51820
-# Peer names list
-wireguard_peers_names: []
+# Peers list
+# wireguard_peers:
+#   - name: peer
+#     email: mail
+wireguard_peers: []
 # DNS servers for peers
 wireguard_peers_dns: [8.8.8.8, 1.1.1.1]
 # VPN network
@@ -19,3 +22,12 @@ wireguard_log_confs: true
 wireguard_docker_network_name: prom_network
 # Labels assigned to docker container
 wireguard_docker_labels: ['wireguard']
+# Additionally user VPN config can be sent to user email after creation. There
+# are needed options for that
+# wireguard_mail:
+#   host: smtp.google.com
+#   port: 587
+#   user: user
+#   secret: password
+#   subject: "VPN configuration"
+#   body: "Your new VPN configuration is in attach"

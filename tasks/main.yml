@@ -26,12 +26,12 @@
 
 - name: Create a list of existing peer directories
   set_fact:
-    list_of_existing_peer_dirs: "{{ list_of_existing_peer_dirs }} + [ '{{ item.path }}' ]"
+    list_of_existing_peer_dirs: "{{ list_of_existing_peer_dirs + [ item.path ] }}"
   with_items: "{{ dirs.files }}"
 
 - name: Create a list of peer directoriers
   set_fact:
-    list_of_peer_dirs: "{{ list_of_peer_dirs }} + [ '{{ wireguard_directory }}/peer_{{ item }}' ]"
+    list_of_peer_dirs: "{{ list_of_peer_dirs + [ wireguard_directory + '/peer_' + item ] }}"
   with_items: "{{ wireguard_peers_names }}"
 
 - name: Create a list of new peer directories
@@ -40,12 +40,12 @@
 
 - name: Create a list of new peer names
   set_fact:
-    list_of_new_peer_names: "{{ list_of_new_peer_names }} + [ '{{ item | split('/') | last | replace('peer_','') }}' ]"
+    list_of_new_peer_names: "{{ list_of_new_peer_names + [ item | split('/') | last | replace('peer_','') ] }}"
   with_items: "{{ list_of_new_peer_dirs }}"
-  
+
 - name: Create a list of new peers
   set_fact:
-    wireguard_new_peers: "{{ wireguard_new_peers }} + [ {{ item }} ]"
+    wireguard_new_peers: "{{ wireguard_new_peers + [ item ] }}"
   when: item.name in list_of_new_peer_names
   loop: "{{ wireguard_peers }}"
 
@@ -122,10 +122,10 @@
     to: "{{ item.email }}"
     subject: "{{ wireguard_mail.subject }}"
     body: "{{ wireguard_mail.body }}"
-    attach: 
+    attach:
       - "{{ wireguard_directory }}/peer_{{ item.name }}/peer_{{ item.name }}.conf"
       - "{{ wireguard_directory }}/peer_{{ item.name }}/peer_{{ item.name }}.png"
-  when: item.email is defined and wireguard_mail.host is defined 
+  when: item.email is defined and wireguard_mail.host is defined
   with_items: "{{ wireguard_new_peers }}"
   failed_when: False
   tags: ['fetch_configs']

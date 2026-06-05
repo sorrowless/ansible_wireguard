@@ -1,6 +1,6 @@
 ---
 - name: Create a list of peer names
-  set_fact:
+  ansible.builtin.set_fact:
     wireguard_peers_names: "{{ wireguard_peers | map(attribute='name') | list }}"
     list_of_existing_peer_dirs: []
     list_of_peer_dirs: []
@@ -9,7 +9,7 @@
     wireguard_new_peers: []
 
 - name: Create configuration directory
-  file:
+  ansible.builtin.file:
     dest: "{{ wireguard_directory }}"
     state: directory
     # TODO(sbog): change it from 0777 to according 0755 and fix user/group ownership
@@ -18,33 +18,33 @@
     group: root
 
 - name: Find existing peers
-  find:
+  ansible.builtin.find:
     paths: "{{ wireguard_directory }}"
     patterns: "peer_*"
     file_type: "directory"
   register: dirs
 
 - name: Create a list of existing peer directories
-  set_fact:
+  ansible.builtin.set_fact:
     list_of_existing_peer_dirs: "{{ list_of_existing_peer_dirs + [ item.path ] }}"
   with_items: "{{ dirs.files }}"
 
 - name: Create a list of peer directoriers
-  set_fact:
+  ansible.builtin.set_fact:
     list_of_peer_dirs: "{{ list_of_peer_dirs + [ wireguard_directory + '/peer_' + item ] }}"
   with_items: "{{ wireguard_peers_names }}"
 
 - name: Create a list of new peer directories
-  set_fact:
+  ansible.builtin.set_fact:
     list_of_new_peer_dirs: "{{ list_of_peer_dirs | difference(list_of_existing_peer_dirs) }}"
 
 - name: Create a list of new peer names
-  set_fact:
+  ansible.builtin.set_fact:
     list_of_new_peer_names: "{{ list_of_new_peer_names + [ item | split('/') | last | replace('peer_','') ] }}"
   with_items: "{{ list_of_new_peer_dirs }}"
 
 - name: Create a list of new peers
-  set_fact:
+  ansible.builtin.set_fact:
     wireguard_new_peers: "{{ wireguard_new_peers + [ item ] }}"
   when: item.name in list_of_new_peer_names
   loop: "{{ wireguard_peers }}"
@@ -85,19 +85,19 @@
           name: "{{ wireguard_docker_network_name }}"
 
 - name: Remove old peers' configs
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: absent
   with_items: "{{ list_of_existing_peer_dirs | default([]) | difference(list_of_peer_dirs) }}"
 
 - name: Wait until the client confs is present before continuing
-  wait_for:
+  ansible.builtin.wait_for:
     path: "{{ wireguard_directory }}/peer_{{ item }}/peer_{{ item }}.conf"
   with_items: "{{ wireguard_peers_names }}"
   tags: ['fetch_configs']
 
 - name: Fetch configurations to localhost
-  fetch:
+  ansible.builtin.fetch:
     src: "{{ wireguard_directory }}/peer_{{ item }}/peer_{{ item }}.conf"
     dest: "/tmp/wireguard_vpn/peer_{{ item }}.conf"
     flat: yes
@@ -105,7 +105,7 @@
   tags: ['fetch_configs']
 
 - name: Fetch qr codes to localhost
-  fetch:
+  ansible.builtin.fetch:
     src: "{{ wireguard_directory }}/peer_{{ item }}/peer_{{ item }}.png"
     dest: "/tmp/wireguard_vpn/peer_{{ item }}.png"
     flat: yes
@@ -113,7 +113,7 @@
   tags: ['fetch_configs']
 
 - name: Send config to users email
-  mail:
+  community.general.mail:
     host: "{{ wireguard_mail.host }}"
     port: "{{ wireguard_mail.port }}"
     username: "{{ wireguard_mail.user }}"

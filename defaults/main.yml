@@ -23,16 +23,22 @@ wireguard_docker_network_name: prom_network
 # Labels assigned to docker container
 wireguard_docker_labels: ['wireguard']
 
-# Hairpin: full-tunnel clients send traffic for this host's public address into
-# wg0. When both address and service_name are set, PostUp DNATs that traffic to
-# a Docker/Swarm DNS name on the same network (resolved at interface up time).
-# DNAT never fails wg-quick; DNS is retried briefly so peers can start first.
+# Hairpin for full-tunnel clients that send traffic to this host's public address
+# into wg0. Requires wireguard_hairpin_address plus at least one of:
+#   - service DNAT (Docker/Swarm DNS name on the same network)
+#   - host DNAT (ports published on the Docker host / docker_gwbridge gateway)
 wireguard_hairpin_address: ""
 wireguard_hairpin_service_name: ""
 wireguard_hairpin_ports:
   - "80"
   - "443"
 wireguard_hairpin_dns_retries: 15
+# TCP ports redirected on the Docker host: traffic leaves the WG container
+# toward hairpin_address and is REDIRECTed on docker_gwbridge to local
+# listeners (e.g. sshd).
+wireguard_hairpin_host_ports: []
+wireguard_hairpin_bridge_interface: docker_gwbridge
+
 
 wireguard_stock_postup: >-
   PostUp = iptables -A FORWARD -i %i -j ACCEPT;

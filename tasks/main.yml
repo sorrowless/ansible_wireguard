@@ -84,10 +84,10 @@
           external: true
           name: "{{ wireguard_docker_network_name }}"
 
-- name: Configure hairpin DNAT to a Docker DNS service
+- name: Configure hairpin DNAT for full-tunnel clients
   when:
     - wireguard_hairpin_address | length > 0
-    - wireguard_hairpin_service_name | length > 0
+    - (wireguard_hairpin_service_name | length > 0) or (wireguard_hairpin_host_ports | length > 0)
   vars:
     wireguard_hairpin_ports_csv: "{{ wireguard_hairpin_ports | join(',') }}"
     wireguard_stock_postup_line: "{{ wireguard_stock_postup | regex_replace('\\s+', ' ') | trim }}"
@@ -104,10 +104,16 @@
       ansible.builtin.wait_for:
         path: "{{ wireguard_directory }}/wg_confs/wg0.conf"
 
-    - name: Build hairpin DNAT PostUp and PostDown
+    - name: Build in-container service hairpin PostUp and PostDown
+      ansible.builtin.set_fact:
+        wireguard_desired_postup: "{{ wireguard_stock_postup_line }}"
+        wireguard_desired_postdown: "{{ wireguard_stock_postdown_line }}"
+
+    - name: Append service DNAT to PostUp and PostDown
+      when: wireguard_hairpin_service_name | length > 0
       ansible.builtin.set_fact:
         wireguard_desired_postup: >-
-          {{ wireguard_stock_postup_line }};
+          {{ wireguard_desired_postup }};
           (
           TARGET_IP="";
           for _i in {{ wireguard_hairpin_retry_seq }}; do
@@ -122,7 +128,7 @@
           fi
           ) || true
         wireguard_desired_postdown: >-
-          {{ wireguard_stock_postdown_line }};
+          {{ wireguard_desired_postdown }};
           (
           TARGET_IP={{ wireguard_hairpin_resolve }};
           if test -n "$TARGET_IP"; then
@@ -167,6 +173,20 @@
         state: started
         restart: true
       when: wireguard_hairpin_template is changed or wireguard_hairpin_live is changed
+
+    - name: Ensure host hairpin REDIRECT for host-published ports
+      when: wireguard_hairpin_host_ports | length > 0
+      ansible.builtin.iptables:
+        table: nat
+        chain: PREROUTING
+        in_interface: "{{ wireguard_hairpin_bridge_interface }}"
+        destination: "{{ wireguard_hairpin_address }}/32"
+        protocol: tcp
+        destination_port: "{{ item }}"
+        jump: REDIRECT
+        comment: "wireguard-hairpin-host-{{ item }}"
+        state: present
+      loop: "{{ wireguard_hairpin_host_ports }}"
 
 
 - name: Remove old peers' configs

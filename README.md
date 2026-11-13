@@ -15,8 +15,8 @@ wireguard_directory: /etc/wireguard
 wireguard_server_url: vpn.example.com
 # Port to listen
 wireguard_server_port: 51820
-# Peer names list
-wireguard_peers_names: []
+# Peers list
+wireguard_peers: []
 # DNS servers for peers
 wireguard_peers_dns: [8.8.8.8, 1.1.1.1]
 # VPN network
@@ -29,6 +29,13 @@ wireguard_log_confs: true
 wireguard_docker_network_name: prom_network
 # Labels assigned to docker container
 wireguard_docker_labels: ['wireguard']
+
+# Optional hairpin for full-tunnel clients hitting this host's public IP:
+# DNAT inside the container to any Docker/Swarm DNS name on the same network.
+# wireguard_hairpin_address: "203.0.113.10"
+# wireguard_hairpin_service_name: "myStack_myService"
+# wireguard_hairpin_ports: ["80", "443"]
+# wireguard_hairpin_dns_retries: 15
 ```
 
 #### Dependencies

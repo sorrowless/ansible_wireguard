@@ -84,6 +84,91 @@
           external: true
           name: "{{ wireguard_docker_network_name }}"
 
+- name: Configure hairpin DNAT to a Docker DNS service
+  when:
+    - wireguard_hairpin_address | length > 0
+    - wireguard_hairpin_service_name | length > 0
+  vars:
+    wireguard_hairpin_ports_csv: "{{ wireguard_hairpin_ports | join(',') }}"
+    wireguard_stock_postup_line: "{{ wireguard_stock_postup | regex_replace('\\s+', ' ') | trim }}"
+    wireguard_stock_postdown_line: "{{ wireguard_stock_postdown | regex_replace('\\s+', ' ') | trim }}"
+    wireguard_hairpin_resolve: >-
+      $(getent hosts {{ wireguard_hairpin_service_name }} | awk '{print $1; exit}')
+    wireguard_hairpin_retry_seq: "{{ range(1, (wireguard_hairpin_dns_retries | int) + 1) | list | join(' ') }}"
+  block:
+    - name: Wait for WireGuard server template
+      ansible.builtin.wait_for:
+        path: "{{ wireguard_directory }}/templates/server.conf"
+
+    - name: Wait for WireGuard live server config
+      ansible.builtin.wait_for:
+        path: "{{ wireguard_directory }}/wg_confs/wg0.conf"
+
+    - name: Build hairpin DNAT PostUp and PostDown
+      ansible.builtin.set_fact:
+        wireguard_desired_postup: >-
+          {{ wireguard_stock_postup_line }};
+          (
+          TARGET_IP="";
+          for _i in {{ wireguard_hairpin_retry_seq }}; do
+          TARGET_IP={{ wireguard_hairpin_resolve }};
+          if test -n "$TARGET_IP"; then break; fi;
+          sleep 1;
+          done;
+          if test -n "$TARGET_IP"; then
+          iptables -t nat -A PREROUTING -i %i -d {{ wireguard_hairpin_address }}
+          -p tcp -m multiport --dports {{ wireguard_hairpin_ports_csv }}
+          -j DNAT --to-destination "$TARGET_IP";
+          fi
+          ) || true
+        wireguard_desired_postdown: >-
+          {{ wireguard_stock_postdown_line }};
+          (
+          TARGET_IP={{ wireguard_hairpin_resolve }};
+          if test -n "$TARGET_IP"; then
+          iptables -t nat -D PREROUTING -i %i -d {{ wireguard_hairpin_address }}
+          -p tcp -m multiport --dports {{ wireguard_hairpin_ports_csv }}
+          -j DNAT --to-destination "$TARGET_IP";
+          fi
+          ) || true
+
+    - name: Normalize desired PostUp and PostDown lines
+      ansible.builtin.set_fact:
+        wireguard_desired_postup: "{{ wireguard_desired_postup | regex_replace('\\s+', ' ') | trim }}"
+        wireguard_desired_postdown: "{{ wireguard_desired_postdown | regex_replace('\\s+', ' ') | trim }}"
+
+    - name: Ensure WireGuard server template PostUp and PostDown
+      ansible.builtin.lineinfile:
+        path: "{{ wireguard_directory }}/templates/server.conf"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - regexp: '^PostUp\s*='
+          line: "{{ wireguard_desired_postup }}"
+        - regexp: '^PostDown\s*='
+          line: "{{ wireguard_desired_postdown }}"
+      register: wireguard_hairpin_template
+
+    - name: Ensure live WireGuard server config PostUp and PostDown
+      ansible.builtin.lineinfile:
+        path: "{{ wireguard_directory }}/wg_confs/wg0.conf"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - regexp: '^PostUp\s*='
+          line: "{{ wireguard_desired_postup }}"
+        - regexp: '^PostDown\s*='
+          line: "{{ wireguard_desired_postdown }}"
+      register: wireguard_hairpin_live
+
+    - name: Restart WireGuard after PostUp and PostDown change
+      community.docker.docker_container:
+        name: wireguard
+        state: started
+        restart: true
+      when: wireguard_hairpin_template is changed or wireguard_hairpin_live is changed
+
+
 - name: Remove old peers' configs
   ansible.builtin.file:
     path: "{{ item }}"

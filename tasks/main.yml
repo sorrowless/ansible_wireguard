@@ -83,6 +83,17 @@
         default:
           external: true
           name: "{{ wireguard_docker_network_name }}"
+  register: task_result
+  ignore_unreachable: true
+  retries: 3
+  delay: 10
+  until:
+    - task_result is not failed
+    - task_result is not unreachable
+
+- name: Clear host unreachable state if it recovered during retries
+  ansible.builtin.meta: clear_host_errors
+  when: task_result.unreachable is defined
 
 - name: Configure hairpin DNAT for full-tunnel clients
   when:
@@ -173,6 +184,17 @@
         state: started
         restart: true
       when: wireguard_hairpin_template is changed or wireguard_hairpin_live is changed
+      register: task_result
+      ignore_unreachable: true
+      retries: 3
+      delay: 10
+      until:
+        - task_result is not failed
+        - task_result is not unreachable
+
+    - name: Clear host unreachable state if it recovered during retries
+      ansible.builtin.meta: clear_host_errors
+      when: task_result.unreachable is defined
 
     - name: Ensure host hairpin REDIRECT for host-published ports
       when: wireguard_hairpin_host_ports | length > 0
